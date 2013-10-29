@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-
+import logging
 import os
+import subprocess
 import json
 from itertools import chain
 import tablib
@@ -9,6 +10,8 @@ from django.db.models.loading import get_model
 from django.db.utils import DatabaseError
 from openbudgets.apps.entities.models import Domain, Division, Entity
 
+#Sets the loggin to print to the console
+logging.getLogger().setLevel(logging.INFO)
 
 class Store(object):
 
@@ -33,11 +36,11 @@ class Store(object):
         return save_method(**self.obj)
 
     def _save_base(self, **obj):
-        #self.model.objects.all().delete()
         obj = self.prepare_obj(obj)
         try:
             obj = self.model.objects.get(**obj)
         except self.model.DoesNotExist:
+
             obj = self.model.objects.create(**obj)
         return obj
 
@@ -46,24 +49,30 @@ class Store(object):
             fields = settings.IMPORT_PRIORITY
             if settings.IMPORT_SEPARATOR in header:
                 header, field = header.split(settings.IMPORT_SEPARATOR)
-                fields.insert(0,field)
-            if self.model._meta.get_field(header).get_internal_type() == "ForeignKey":
-                model = get_model('entities', header)
-                model = self.model if not model else model
+                fields.insert(0 ,field)
+            type = self.model._meta.get_field(header).get_internal_type()
+            if type == "ForeignKey":
+                model= self.model._meta.get_field(header).rel.to
                 for field in fields:
                     try:
                         obj[header] = model.objects.get(**{field: obj[header]})
                         break
                     except (DatabaseError, model.DoesNotExist):
                         continue
-        return obj
-    # def _save_{model_name_lower_case}(self, **obj):
-    #
-    #     HERE is the place for any custom code to clean the item
-    #     before passing it to _save_base_.
-    #     After doing the custom work, ensure you have an header that can be passed to _save_base
-    #
-    #     return self._save_base(**obj)
+
+            if type == 'ManyToManyField':
+                    pass
+
+
+
+            return obj
+        # def _save_{model_name_lower_case}(self, **obj):
+        #
+        #     HERE is the place for any custom code to clean the item
+        #     before passing it to _save_base_.
+        #     After doing the custom work, ensure you have an header that can be passed to _save_base
+        #
+        #     return self._save_base(**obj)
 
 
 class Process(object):
@@ -114,15 +123,49 @@ class Process(object):
                 store = self.storage_class(model, obj)
                 obj = store.save()
                 obj_list.append(obj)
-            #self.update_id(obj_list, path)
+            self.update_id(obj_list, path)
+            self.commit_and_push(path)
+
+    def commit_and_push(self, path):
+        """ Add, commit and push the update data to the git repo"""
+
+        to_dir_params = [
+            "cd",
+            os.path.abspath(os.path.join(settings.OPENBUDGETS_DATA['directory'], 'dataset'))
+        ]
+        add_params = [
+            'git',
+            'add',
+            path
+        ]
+        commit_params = [
+            'git',
+            'commit',
+            '-m',
+            settings.IMPORT_COMMIT_MESSAGE + os.path.basename(path)
+        ]
+        push_params = [
+            'git',
+            'push'
+        ]
+        params = to_dir_params + ['&']  + add_params + ['&'] + commit_params +['&'] + push_params
+        casper= subprocess.Popen(params, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE, shell=True)
+        casper_output, casper_errors = casper.communicate()
+
+        logging.info(casper_output)
+        logging.info(casper_errors)
+        logging.info(casper.returncode)
+
 
     def update_id(self, obj_list, path):
-
+        """ Update the id of the given objects in the given file path
+        """
         f = open(path, 'r+')
         stream = f.read()
         raw_dataset = tablib.import_set(stream)
         del raw_dataset["ID"]
-        obj_index=[]
+        obj_index= []
         for obj in obj_list:
             for index, name in enumerate(raw_dataset['NAME']):
                 if name in obj.name:
@@ -131,6 +174,7 @@ class Process(object):
         f.close()
         f= open(path, 'w')
         f.write(raw_dataset.csv)
+        f.close()
 
     def _extract_data(self, source):
         """Create a Dataset object from the data source."""
@@ -158,7 +202,7 @@ class Process(object):
             ord('"'): None,
             ord(' '): None,
             ord("'"): None,
-        }
+            }
 
         for index, header in enumerate(dataset.headers):
             tmp = unicode(header).translate(symbols).lower()
@@ -203,7 +247,7 @@ class Unload(object):
         self.ignore_dirs = set(ignore_dirs)
         self.index_file = index_file
         self.supported_extensions = supported_extensions
-        self.root_index = self.data_root + '/' + index_file
+        self.root_index = os.path.abspath(os.path.join(self.data_root,index_file))
 
     def walk_and_sort(self):
         """Returns a list of data sources, ordered by desired save order."""
@@ -211,7 +255,6 @@ class Unload(object):
         ordered_branches = []
         ordered_sources = []
         sources = []
-
         for root, dirs, files in os.walk(self.data_root):
             # only consider roots that have an index file
             if self.index_file in files:
@@ -256,11 +299,11 @@ class Unload(object):
         """
 
         freight = []
+
         for data_source in self.walk_and_sort():
-            this_path, ext = os.path.splitext(data_source)
-            path_elements = this_path.split('\\')
-            model_name = path_elements[-1]
-            module_name = path_elements[-2]
+            full_path, ext = os.path.splitext(data_source)
+            head, model_name = os.path.split(full_path)
+            head, module_name = os.path.split(head)
             model = get_model(module_name, model_name.title())
             freight.append((model, data_source))
 

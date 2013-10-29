@@ -303,7 +303,7 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql_psycopg2',
         'NAME': 'openbudgets',
-        'USER': '',
+        'USER': 'robot',
         'PASSWORD': '',
         'HOST': '',
         'PORT': '',
@@ -362,7 +362,6 @@ OPENBUDGETS_DATA = {
     'directory': OPENBUDGETS_TEMP_DIR,
     'db_dump': OPENBUDGETS_TEMP_DIR + '/db_dump.sql'
 }
-
 OPENBUDGETS_CKAN = [
     {
         'name': 'Datahub',
@@ -377,11 +376,14 @@ OPENBUDGETS_SETTING = {
     'owner_org': 'israel-municipalities'
 }
 
-IMPORT_PRIORITY = ['slug',
+
+IMPORT_PRIORITY = [ 'slug',
                     'name',
                     'id'
 ]
 IMPORT_SEPARATOR = ':'
+
+IMPORT_COMMIT_MESSAGE = 'Updated the file: '
 # if we are on production, we should have a settings.production module to load.
 try:
     from production import *
