@@ -5,11 +5,16 @@ from fabfile.local import db
 from fabfile.config import CONFIG
 
 
+
+DATASET_PATH = os.path.abspath(os.path.join(CONFIG['dataset_root'], 'dataset'))
+
+
 @task
 def init():
-    notify(u'Loading the project initial data state.')
     local('python manage.py loaddata dev/sites')
     local('python manage.py loaddata locale/he/strings')
+
+    notify(u'Loading the project initial data state.')
     local('python manage.py loaddata dev/interactions')
     #local('python manage.py loaddata contexts')
     #local('python manage.py loaddata dev/sources')
@@ -25,14 +30,14 @@ def clone():
 @task
 def fetch():
     notify(u'Fetching new commits from the data repository.')
-    with lcd(CONFIG['dataset_root'] + '/dataset'):
+    with lcd(DATASET_PATH):
         local('git fetch')
 
 
 @task
 def merge():
     notify(u'Merging latest changes from the data repository.')
-    with lcd(CONFIG['dataset_root'] + '/dataset'):
+    with lcd(DATASET_PATH):
         local('git merge ' + CONFIG['dataset_branch'] + ' origin/' + CONFIG['dataset_branch'])
 
 
@@ -46,7 +51,7 @@ def pull():
 @task
 def push():
     notify(u'Pushing latest local changes to the data repository.')
-    with lcd(CONFIG['dataset_root'] + '/dataset'):
+    with lcd(os.path.abspath(os.path.join(CONFIG['dataset_root'], 'dataset'))):
         local('git push origin/' + CONFIG['dataset_branch'])
 
 
@@ -67,7 +72,7 @@ def load(from_dump='no', source=CONFIG['db_dump_file']):
         #CSVImporter('division', open(CONFIG['dataset_root'] + '/dataset/data/regions/us/grades/grade.csv', 'rb'))
         #CSVImporter('entity', open(CONFIG['dataset_root'] + '/dataset/data/regions/us/topics/topic.csv', 'rb'))
 
-        data_root = CONFIG['dataset_root'] + '/dataset/data'
+        data_root = os.path.abspath(os.path.join(CONFIG['dataset_root'], 'dataset', 'data'))
         from openbudgets.apps.transport.incoming import Unload, Process
         unload = Unload(data_root)
         Process(unload.freight())

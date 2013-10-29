@@ -4,13 +4,13 @@ from fabric.contrib import django
 django.project('openbudgets')
 from django.conf import settings
 
-env.user = 'robot'
+env.user = 'ravidziv'
 env.roledefs = {
     'web': ['192.158.30.219']
 }
 
 
-z
+
 CONFIG = {
     'sentry_dsn': '',
     'user': env.user,
