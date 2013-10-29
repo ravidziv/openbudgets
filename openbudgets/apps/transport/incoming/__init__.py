@@ -148,6 +148,7 @@ class Process(object):
             'git',
             'push'
         ]
+
         params = to_dir_params + ['&']  + add_params + ['&'] + commit_params +['&'] + push_params
         casper= subprocess.Popen(params, stdout=subprocess.PIPE,
                                  stderr=subprocess.PIPE, shell=True)
@@ -156,7 +157,6 @@ class Process(object):
         logging.info(casper_output)
         logging.info(casper_errors)
         logging.info(casper.returncode)
-
 
     def update_id(self, obj_list, path):
         """ Update the id of the given objects in the given file path
