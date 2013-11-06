@@ -11,7 +11,6 @@ from django.db.utils import DatabaseError
 from openbudgets.apps.entities.models import Domain, Division, Entity
 from django.db.models.fields import FieldDoesNotExist
 
-#Sets the loggin to print to the console
 logging.getLogger().setLevel(logging.INFO)
 
 class Store(object):
