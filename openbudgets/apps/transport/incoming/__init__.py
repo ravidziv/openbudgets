@@ -9,6 +9,7 @@ from django.conf import settings
 from django.db.models.loading import get_model
 from django.db.utils import DatabaseError
 from openbudgets.apps.entities.models import Domain, Division, Entity
+from django.db.models.fields import FieldDoesNotExist
 
 #Sets the loggin to print to the console
 logging.getLogger().setLevel(logging.INFO)
@@ -28,6 +29,13 @@ class Store(object):
 
         self.model = model
         self.obj = obj
+        self.direct_relation_types = [
+            "ForeignKey",
+            "ManyToManyField",
+            "OneToOneField"
+        ]
+
+
     def save(self):
         try:
             save_method = getattr(self, '_save_' + self.model.__name__.lower())
@@ -36,7 +44,7 @@ class Store(object):
         return save_method(**self.obj)
 
     def _save_base(self, **obj):
-        obj = self.prepare_obj(obj)
+        obj = self.prepare_obj(**obj)
         try:
             obj = self.model.objects.get(**obj)
         except self.model.DoesNotExist:
@@ -44,28 +52,56 @@ class Store(object):
             obj = self.model.objects.create(**obj)
         return obj
 
-    def prepare_obj(self, obj):
-        for header in obj.keys():
-            fields = settings.IMPORT_PRIORITY
-            if settings.IMPORT_SEPARATOR in header:
-                header, field = header.split(settings.IMPORT_SEPARATOR)
-                fields.insert(0 ,field)
-            type = self.model._meta.get_field(header).get_internal_type()
-            if type == "ForeignKey":
-                model= self.model._meta.get_field(header).rel.to
-                for field in fields:
+    def prepare_obj(self, **obj):
+        for key in obj.keys():
+
+            lookup_fields = settings.IMPORT_PRIORITY
+            related_model = None
+            header = key
+
+            if settings.IMPORT_SEPARATOR in key:
+                header, header_args = key.split(settings.IMPORT_SEPARATOR)
+                # TODO: improve the way we take args add add them for lookups. should be namespaced
+                # TODO: also, try the accessor syntax from django `model__field_name`
+                lookup_fields.insert(0, header_args)
+
+            try:
+                # If the field is actually defined on the class, we'll get the related_model like this
+                model_field = self.model._meta.get_field(header)
+                if model_field.get_internal_type() in self.direct_relation_types:
+                    related_model = model_field.rel.to
+
+            except FieldDoesNotExist as e:
+                # The field was not on the class, it is a reverse relation in the ORM
+                try:
+                    model_field = getattr(self.model, header)
+                    related_model = model_field.related.model
+
+                except AttributeError as e:
+                    #TODO: we actually are raising here when the try/except it is wrapped in
+                    # also fails, and thus the user cant know which error to debug
+                    raise e
+
+            if related_model:
+
+                related_success = False
+
+                for field in lookup_fields:
                     try:
-                        obj[header] = model.objects.get(**{field: obj[header]})
+                        obj[header] = related_model.objects.get(**{field: obj[header]})
+                        related_success = True
                         break
-                    except (DatabaseError, model.DoesNotExist):
-                        continue
 
-            if type == 'ManyToManyField':
-                    pass
+                    except related_model.DoesNotExist as e:
+                        pass
+
+                if not related_success:
+                    # raising here so our loop above executes as desired
+                    raise e
+
+        return obj
 
 
-
-            return obj
         # def _save_{model_name_lower_case}(self, **obj):
         #
         #     HERE is the place for any custom code to clean the item
